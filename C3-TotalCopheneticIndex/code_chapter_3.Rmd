@@ -1,5 +1,5 @@
 ---
-title: "Chapter 3"
+title: "Chapter 3: The total cophenetic index"
 author: "Lucia Rotger"
 output:
   html_document:
@@ -561,6 +561,7 @@ $$
 The following functions compute this probabilities
 ```{r}
 are.tie = function(xx,yy) return(xx==yy) 
+
 exact.ties = function(){
   trees = list()
   all.indices = list()
@@ -581,6 +582,7 @@ exact.ties = function(){
   }
   return(prob.ties)
 }
+
 sim.ties.n = function(n,num.pairs.sim=3000){ 
   num.ties = c(0,0,0)
   for(i in 1:num.pairs.sim){
@@ -658,7 +660,7 @@ for(k in leaves){
   indices.tb[[k]] = sapply(trees, cophen.index)
   value = mean( indices.tb[[k]] )
   bin.tb.mean = rbind(bin.tb.mean,c(k,value))
- }
+}
 ```
 The result of this computation is avalaible in "C3-table-tb-means.txt".
 ```{r,echo=FALSE}
