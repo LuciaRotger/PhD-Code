@@ -21,6 +21,14 @@ for(k in leaves){
   bin.tb.mean = rbind(bin.tb.mean,c(k,value))
 }
 
+harm.sum = cumsum(1/1:1000)
+EYPhi=function(n){
+  return(n*(n+1-2*harm.sum[n]))
+}
+EUPhi = function(n){
+  return(as.numeric((n*(n-1)/4)*(big.double.factorial(2*n-2)/
+                                   big.double.factorial(2*n-3)-2)))
+}
 range.exp = 3:130
 eyphi.values = sapply(range.exp, EYPhi)
 euphi.values = sapply(range.exp, EUPhi)
