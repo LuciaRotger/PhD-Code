@@ -1,0 +1,2140 @@
+---
+title: 'New balance indices and metrics for phylogenetic trees - Scripts'
+author: "Lucia Rotger"
+date: "Universitat de les Illes Balears"
+geometry: "top=3.5cm,left=3.5cm,right=3.5cm,bottom=3.5cm" 
+output:
+  pdf_document:
+    keep_tex: true
+    toc: true  
+    extra_dependencies: ["color"]
+  html_document:
+    df_print: paged 
+--- 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr) 
+par(mar = c(2, 2, 2, 2)) 
+```
+
+#A.1 Packages required {#packs}
+The functions used in this appendix need the following R packages to be
+installed and loaded:
+```{r, results='hide',warning=FALSE,message=FALSE}
+library(Zseq)
+library(gmp)
+library(ape)
+library(igraph)
+library(CollessLike)
+```
+
+
+#A.2 List of all binary trees {#bintrees}
+We have obtained al phylogenetic trees in $\mathcal{BT}_n$ for $n=3,\ldots,8$ using the *Python* package *phylonetwork*:
+
+```{python, python.reticulate=FALSE, eval=FALSE}
+import phylonetwork.generators as gen
+from phylonetwork.distances import cophenetic_distance as cophdist
+from math import factorial
+
+for n in range(3,9):
+    taxa = [str(i+1) for i in range(n)]
+    tg = gen.all_trees(taxa = taxa, binary = True, nested_taxa = False)
+    trees = list(tg)
+    newicks = []
+    file = open("bintrees-n"+str(n)+".txt", "w+")
+    for i in range(len(trees)):
+        newicks.append(trees[i].eNewick())
+        print >>file, newicks[i]
+    file.close()
+```
+
+The resulting lists of trees are available in the [$\color{blue}{\text{\emph{List of Trees}}}$](https://github.com/LuciaRotger/PhD-Code/tree/master/List%20of%20Trees) folder of the GitHub repository.
+
+
+
+#A.3 General functions {#gefun}
+The following functions are needed in some computations performed in the
+next two sections.
+```{r common} 
+big.factorial = function(n){
+  if(n<2) return(1)
+  return(Factorial(n+1)[n+1])
+}
+
+big.double.factorial = function(n){
+  if(n<2) return(1)
+  m = (n+2+n%%2)/2
+  return(Factorial.Double(m,odd=(n%%2==1))[m])
+}
+
+big.binomial = function(n,k){
+  return(big.factorial(n)/(big.factorial(k)*big.factorial(n-k)))
+}
+
+Cknk = function(k,n){
+  return(big.binomial(n,k)*((big.double.factorial(2*k-3)*
+          big.double.factorial(2*(n-k)-3))/
+          (2*big.double.factorial(2*n-3))))
+}
+```
+
+
+#A.4 Scripts from Chapter 2 {#chap2}
+##A.4.1 Computation of $E_Y(\Phi_n)$ {#eyphi}
+The formula in Theorem 2.20 can be computed with the following function:
+```{r}
+harmonic=function(n){return(sum(1/(1:n)))}
+EYPhi=function(n){
+  return(n*(n+1-2*harmonic(n)))
+}
+```
+
+For $n=3,...,20$ the results are:
+```{r}
+sapply(3:20,EYPhi)
+```
+
+To double-check the formula, we have computed the values of $E_Y(\Phi)$, for $n=3,\ldots,8$, from the cophenetic indices of all trees in the corresponding $\mathcal{BT}_n$. 
+ 
+To do that, we have used the full content of $\mathcal{BT}_n$ for $n=3,\ldots,8$ obtained in Section [$\color{blue}{\text{A.2}}$](#bintrees).  Then, on the one hand, we have computed the probability of each tree under the Yule model with the following function: 
+```{r,eval=FALSE}
+yule.prob = function(tree){
+  if (class(tree)=="phylo") 
+    tree=graph.edgelist(tree$edge, directed=TRUE)  
+  sp = shortest.paths(tree,mode = "out")
+  deg = degree(tree,mode="out")
+  leaves = which(deg==0)
+  n = length(leaves) 
+  k.node = function(node){
+    subtree=which(sp[node,]<Inf)
+    return(length(intersect(leaves,subtree)))
+  } 
+  kappas = sapply(which(deg>0), k.node) 
+  value = (2^(n-1)/as.numeric(big.factorial(n)))*
+              prod(1/(kappas-1))
+  return(value)
+} 
+```
+
+And, on the other hand, we have computed the total cophenetic index of each
+tree with the function `cophen.index` contained in our R package *CollessLike* (see Section [$\color{blue}{\text{A.6.1}}$](#package)). Finally, we have computed the desired expected value for each
+n as the sum over all phylogenetic trees in BT n of the product of their total
+cophenetic index and their probability:
+```{r,eval=FALSE}
+exp.yule = c()
+for(n in 3:8){ 
+  trees=read.tree(file=paste("./bintrees-n",n,".txt",sep=""))
+  indices = sapply(trees, cophen.index)
+  probs=sapply(trees, yule.prob)
+  exp.yule[n]=sum(indices*probs)
+} 
+exp.yule
+```
+```{r,echo=FALSE}
+read.table("./C2-EYPhi.txt")[,1]
+```
+
+So, the results agree with the figures given by our formula.
+
+
+
+##A.4.2 Computation of $E_U(\Phi_n)$ {#euphi}
+The formula in Theorem 2.28 can be computed with the following function (it
+uses the function `big.double.factorial` explained in Section [$\color{blue}{\text{A.3}}$](#gefun)): 
+```{r}
+EUPhi = function(n){
+  return(as.numeric((n*(n-1)/4)*
+            (big.double.factorial(2*n-2)/
+              big.double.factorial(2*n-3)-2)))
+}
+```
+
+For $n=3,...,20$ the results are:
+```{r}
+sapply(3:20,EUPhi)
+```
+
+To double-check the formula, we have computed the values of $E_U(\Phi)$, for $n=3,\ldots,8$, as the arithmetic mean of the total cophenetic indices of all
+phylogenetic trees in $\mathcal{BT}_n$ computed with our function `cophen.index`.
+```{r,eval=FALSE}
+exp.uni = c()
+for(n in 3:8){ 
+  trees=read.tree(file=paste("./bintrees-n",n,".txt",sep=""))
+  indices = sapply(trees, cophen.index) 
+  exp.uni[n]=mean(indices)
+} 
+exp.uni
+```
+```{r,echo=FALSE}
+read.table("./C2-EUPhi.txt")[,1] 
+```
+
+Again, the results agree with the figures given by our formula.
+
+
+
+## A.4.3 Computation of $\sigma^2_U(\Phi_n)$ {#varphi}
+
+### Computing the variance of $\Phi_n$ using our formula
+
+We can compute $\sigma^2_U(\Phi_n)$ using the recurrence for
+$E_U(\Phi_n^2)$, the exact formula of $E_U(\Phi_2)^2$, and the identity:
+$$\sigma^2_U(\Phi_n)=E_U(\Phi_n^2)-E_U(\Phi_2)^2$$
+
+The following functions are needed to compute this variance, in addition to those in Section [$\color{blue}{\text{A.3}}$](#genfun).
+```{r,eval=FALSE}
+EUPhi = function(n){
+    return(as.numeric((n*(n-1)/4)*
+            (big.double.factorial(2*n-2)/
+              big.double.factorial(2*n-3)-2)))
+}
+
+term.Phi = function(n){
+  return(mul.bigq(as.bigq(n*(n-1)/2),(mul.bigq(as.bigq(
+          (49*n^3-57*n^2-22*n+24)/48),
+          big.double.factorial(2*n-4)/big.double.factorial(
+            2*n-3))-as.bigq((63*n^2-95*n+28)/30)))) 
+}
+
+compute.EUPhi2 = function(n.max=500){
+  terms = lapply(2:n.max,term.Phi)
+  terms = c(0,terms)
+  exp.values = list(0)
+  for(n in 2:n.max){
+    sums = 0
+    if(n>2){ 
+      for(k in 2:(n-1)){ 
+        sums = sums + Cknk(k,n)*exp.values[[k]]
+      }
+      sums = 2*sums
+    }
+    sums = sums + terms[[n]]
+    exp.values[[n]] = sums
+    print(n)
+  }
+  exp.values = sapply(exp.values, as.numeric)
+  write.table(exp.values,file = paste("C2-EU(Phi2)",n.max,".txt",
+                        sep = ""),row.names = F,col.names = F)
+  return(exp.values)
+}
+
+compute.varUPhi = function(exp.values,n.max=500){
+  var.form = function(i)return(exp.values[i]-EUPhi(i)^2)
+  var.values = sapply(1:n.max, var.form)
+  write.table(var.values,file = paste("C2-varU(Phi)",n.max,".txt",
+                        sep = ""),row.names = F,col.names = F)
+  return(var.values)
+}
+```
+
+We have computed these variances up to $n=1000$ with the following commands:
+```{r, eval=FALSE} 
+exp.values.Phi = compute.EUPhi2(1000)
+var.values.Phi = compute.varUPhi(exp.values.Phi,1000)
+```
+
+For $n=3,...,20$ the results have been:
+```{r, echo=FALSE}
+exp.values.Phi = read.table("./C2-EU(Phi2)1000.txt")[,1]
+var.values.Phi = read.table("./C2-varU(Phi)1000.txt")[,1]
+```
+```{r}
+exp.values.Phi[3:20]
+var.values.Phi[3:20]
+```
+
+The rest of the values are available in the files "C2-EU(Phi2)1000.txt" and "C2-varU(Phi)1000.txt". 
+
+We have estimated  the main order in the expansion of $\sigma_U^2(\Phi_n)$ as a function of $n$, by performing 
+the minimum squares linear regression of $\ln(\sigma_U^2(\Phi_n))$ as a function of $\ln(n)$ for $n=900,\ldots, 1000$, 
+```{r}
+summary(lm(log(var.values.Phi[900:1000])~log(900:1000)))
+```
+
+The commands below produce Fig. 2.11 that displays $\ln(\sigma_U^2(\Phi_n))$ as a function of $\ln(n)$, together with the corresponding regression line. 
+```{r C2-var-Phi}
+plot(log(1:1000),log(var.values.Phi),
+              xlab="log of the number of leaves",
+              ylab="log of the variance")
+reg.phi=lm(log(var.values.Phi[500:1000])~log(500:1000))
+abline(reg.phi,col="blue",lwd=2)
+```
+
+### Computing the variance of $\Phi_n$ from the cophenetic indices {#realvarphi}
+
+To double-check the recurrence, we have computed the values of
+$\sigma_U^2(\Phi_n)$, for $n=3,\ldots,8$, from the cophenetic indices of all trees in the corresponding $\mathcal{BT}_n$.
+ 
+To do this, we have carried out a similar process as in Section [\color{blue}{\text{A.4.2}}](#euphi), replacing the arithmetic mean by the (true) variance: 
+```{r,eval=FALSE}
+var.n = function (vec)   
+        return(var(vec)*(length(vec)-1)/length(vec))
+trees = list()
+all.cophen.index = list()
+real.var.Phi = c()
+for(n in 3:8){
+  trees[[n]] = read.tree(file = paste("bintrees-n",n,".txt",
+                                        sep = ""))
+  all.cophen.index[[n]] = sapply(trees[[n]],cophen.index)
+  real.var.Phi[n] = var.n(all.cophen.index[[n]])
+  print(paste("var(Phi",n,") = ",real.var.Phi[n],sep = ""))
+}
+real.var.Phi
+```
+```{r,echo=FALSE}
+read.table("./C2-varPhi.txt")[,1]  
+```
+The results agree with the figures given by our recurrence.
+
+
+## A.4.4 Computation of $\sigma^2_U(S_n)$ {#varsackin}
+
+### Computing the variance of $S_n$ using our formula 
+
+We can compute $\sigma^2_U(S_n)$ using the recurrence for
+$E_U(S_n^2)$, the exact formula of $E_U(S_n)^2$, and the identity
+$$\sigma^2_U(S_n)=E_U(S_n^2)-E_U(S_n)^2$$
+
+The following functions are needed to compute this variance, in addition to those in Section [$\color{blue}{\text{A.3}}$](#genfun).
+```{r,eval=FALSE}
+EUS = function(n){
+    return(as.numeric(n*(big.double.factorial(2*n-2)/
+                           big.double.factorial(2*n-3)-1)))
+}
+
+term.S = function(n){
+  return((5*n*2^(n-2)*big.factorial(n))/(
+            big.double.factorial(2*n-3))-n*(5*n-2)) 
+}
+
+compute.EUS2 = function(n.max=500){
+  terms = lapply(2:n.max,term.S)
+  terms = c(0,terms)
+  exp.values = list(0)
+  for(n in 2:n.max){
+    sums = 0
+    if(n>2){ 
+      for(k in 2:(n-1)){ 
+        sums = sums + Cknk(k,n)*exp.values[[k]]
+      }
+      sums = 2*sums
+    }
+    sums = sums + terms[[n]]
+    exp.values[[n]] = sums
+    print(n)
+  }
+  exp.values = sapply(exp.values, as.numeric)
+  write.table(exp.values,file = paste("C2-EU(S2)",n.max,".txt",
+                      sep = ""),row.names = F,col.names = F)
+  return(exp.values)
+}
+
+compute.varUS = function(exp.values, n.max){
+  var.form = function(i)return(exp.values[i]-EUS(i)^2)
+  var.values = sapply(1:n.max,var.form)
+  write.table(var.values,file = paste("C2-varU(S)",n.max,".txt",
+                      sep = ""),row.names = F,col.names = F)
+  return(var.values)
+}
+```
+
+We have computed these variances up to $n=1000$ with the following commands:
+```{r, eval=FALSE}
+exp.values.S = compute.EUS2(1000)
+var.values.S = compute.varUS(exp.values.S,1000)
+```
+
+For $n=3,...,20$ the results have been:
+```{r, echo=FALSE}
+exp.values.S = read.table("./C2-EU(S2)1000.txt")[,1]
+var.values.S = read.table("./C2-varU(S)1000.txt")[,1]
+```
+```{r}
+exp.values.S[3:20]
+var.values.S[3:20]
+```
+
+The rest of the values are available in the files "C2-EU(S2)1000.txt" and "C2-varU(S)1000.txt". 
+
+We have estimated  the main order in the expansion of $\sigma_U^2(S_n)$ as a function of $n$, by performing 
+the minimum squares linear regression of $\ln(\sigma_U^2(S_n))$ as a function of $\ln(n)$ for $n=900,\ldots, 1000$, 
+```{r}
+summary(lm(log(var.values.S[900:1000])~log(900:1000)))
+```
+
+The following code produces Fig. 2.12.
+```{r C2-var-sackin}
+plot(log(1:1000),log(var.values.S),
+              xlab="log of the number of leaves",
+              ylab="log of the variance")
+reg.S=lm(log(var.values.S[500:1000])~log(500:1000))
+abline(reg.S,col="red",lwd=2) 
+sackin.approx = ((10-3*pi)/3)*(1:1000)^3 
+lines(log(1:1000),log(sackin.approx),col="cyan",lty=2,lwd=2)
+```
+
+### Computing the variance of $S$ from the Sackin indices {#realvarsackin}
+
+To double-check the recurrence, we have computed the values of
+$\sigma_U^2(S_n)$, for $n=3,\ldots,8$, from the Sackin indices of all trees in the corresponding $\mathcal{BT}_n$.
+We have proceeded as in Section [\color{blue}{\text{A.4.3}}]({#realvarphi}), using the function `sackin.index` in the package *CollessLike* (see Section [\color{blue}{\text{A.6.1}}](#package)) to compute the Sackin indices:
+```{r,eval=FALSE}
+var.n = function (vec) 
+        return(var(vec)*(length(vec)-1)/length(vec))
+trees = list()
+all.sackin.index = list()
+real.var.sackin = c()
+for(n in 3:8){
+  trees[[n]] = read.tree(file = paste("bintrees-n",n,".txt",
+                                        sep = ""))
+  all.sackin.index[[n]] = sapply(trees[[n]],sackin.index)
+  real.var.sackin[n] = var.n(all.sackin.index[[n]])
+  print(paste("var(S_",n,") = ",real.var.sackin[n],sep = ""))
+}
+real.var.sackin
+```
+```{r,echo=FALSE}
+read.table("./C2-varSackin.txt")[,1]   
+```
+
+So, the results agree again with the figures given by our recurrence.
+
+
+
+## A.4.5 Computation of $Cov_U(S_n,\Phi_n)$ {#cov}
+
+### Computing the covariance of $S_n$ and $\Phi_n$  using our formula 
+
+We can compute $Cov_U(S_n,\Phi_n)$ using the recurrence for
+$E_U(S_n\Phi_n)$, the exact formula of $E_U(S_n)$ and $E_U(\Phi)$, and the identity
+$$Cov_U(S_n,\Phi_n)=E_U(S_n\Phi_n)-E_U(S_n)E_U(\Phi)$$
+
+The following functions are needed to compute this covariance, in addition to `EUPhi` from Section [\color{blue}{\text{A.4.2}}](#euphi), `EUS` from Section Section [\color{blue}{\text{A.4.4}}](#varsackin), and the functions in Section Section [\color{blue}{\text{A.3}}](#gefun). 
+```{r,eval=FALSE}
+term.cov = function(n){
+  return(((13*n^2-9*n-2)*2^(n-5)*big.factorial(n))/(
+              big.double.factorial(2*n-3))-(n*(n-1)/2)*(5*n-2))
+} 
+
+compute.EUcov = function(n.max=500){
+  terms = lapply(2:n.max,term.cov)
+  terms = c(0,terms)
+  exp.values = list(0)
+  for(n in 2:n.max){
+    sums = 0
+    if(n>2){ 
+      for(k in 2:(n-1)){ 
+        sums = sums + Cknk(k,n)*exp.values[[k]]
+      }
+      sums = 2*sums
+    }
+    sums = sums + terms[[n]]
+    exp.values[[n]] = sums
+    print(n)
+  }
+  exp.values = sapply(exp.values, as.numeric)
+  write.table(exp.values,file=paste("C2-EU(SxPhi)",n.max,".txt",
+                      sep = ""),row.names = F,col.names = F)
+  return(exp.values)
+}
+
+compute.cov = function(exp.values,n.max = 500){
+  cov.form = function(i)return(exp.values[i]-EUS(i)*EUPhi(i))
+  cov.values = sapply(1:n.max, cov.form)
+  write.table(cov.values,file = paste("C2-covU(SPhi)",n.max,".txt",
+                      sep = ""),row.names = F,col.names = F)
+  return(cov.values)
+}
+```
+
+We have computed these covariances and correlations up to $n=1000$ with the following commands:
+```{r, eval=FALSE} 
+exp.values.cov = compute.EUcov(1000)
+cov.values = compute.cov(exp.values.cov,1000)
+```
+ 
+For $n=3,...,20$ the results have been:
+```{r, echo=FALSE}
+exp.values.cov = read.table("./C2-EU(SxPhi)1000.txt")[,1]
+cov.values = read.table("./C2-covU(SPhi)1000).txt")[,1]
+```
+```{r}
+exp.values.cov[3:20]
+cov.values[3:20]
+```
+
+The rest of the values are available in the files "C2-EU(SxPhi)1000.txt" and "C2-covU(SPhi)1000.txt". 
+
+We have estimated  the main order in the expansion of $Cov_U(S_n, \Phi_n)$ as a function of $n$, by performing 
+the minimum squares linear regression of $\ln(Cov_U(S_n, \Phi_n))$ as a function of $\ln(n)$ for $n=900,\ldots, 1000$, 
+```{r}
+summary(lm(log(cov.values[900:1000])~log(900:1000)))
+```
+
+The code below produces Fig. 2.13, which displays $\ln(Cov_U(S_n, \Phi_n))$ as a function of $\ln(n)$, together with the corresponding regression line. 
+```{r C2-covariance}
+plot(log(1:1000),log(cov.values),
+              xlab="log of the number of leaves",
+              ylab="log of the covariance")
+reg.cov=lm(log(cov.values[500:1000])~log(500:1000))
+abline(reg.cov,col="violet",lwd=2)  
+```
+
+### Computing the covariance of $S$ and $\Phi$ from the values of the indices 
+
+To double-check the recurrence, we have computed the values of
+$Cov_U(S_n\Phi_n)$, for $n=3,\ldots,8$, from the Sackin and cophenetic indices of all trees in the corresponding $\mathcal{BT}_n$ (see Section  [$\color{blue}{\text{A.4.3}}$](#realvarphi) and Section [$\color{blue}{\text{A.4.4}}$](#realvarsackin)):
+```{r,eval=FALSE}
+covariancesU = function(n){
+  len = length(all.sackin.index[[n]])
+  value = cov(all.sackin.index[[n]],all.cophen.index[[n]]*(len-1)/len)
+  return(value)
+}
+real.cov.values = sapply(3:7,covariancesU)
+real.cov.values
+```
+```{r,echo=FALSE}
+read.table("./C2-covarSackinPhi.txt")[,1]    
+```
+The results agree again with the figures given by our recurrence.
+
+### Computing the correlation of $S$ and $\Phi$ from the values of the indices 
+
+Since we know how to compute recurrently $Cov_U(S_n, \Phi_n)$, $\sigma_U^2(S_n)$ and $\sigma_U^2(\Phi_n)$, we can compute Pearson's correlation $\rho$ of $S_n$ and $\Phi_n$ under the uniform model for any desired $n\geqslant 4$, by means of the identity
+$$
+\rho_U( S_n, \Phi_n)=\frac{Cov_U(S_n, \Phi_n)}{\sigma_U(S_n)\cdot \sigma_U(\Phi_n)}.
+$$
+Therefore
+```{r}
+pearson.cor = function(n.max){
+  return(cov.values[4:n.max]/sqrt(var.values.S[4:n.max]*
+                                      var.values.Phi[4:n.max]))
+}
+```
+For $n=4,...,20$ the results are:
+```{r}
+pearson.cor(20)
+```
+
+
+
+## A.4.6 Computation of the estimated probability of a tie {#ties}
+
+We have estimated the probability that a pair of trees $T_1,T_2\in \mathcal{BT}_n$ have $I(T_1)=I(T_2)$, for $I=C,S,\Phi$. To do that, for every $n=3,\ldots,50$ we have chosen uniformly a set of $N$ random pairs of trees in $\mathcal{BT}_n$ (for $n=3,\ldots,7$, we took $N=|\mathcal{BT}_n|$ and, for $n\geqslant 8$, we took $N=3000$), and computed, for $I=C,S,\Phi$,
+$$
+\widehat{p}_n(I)=\frac{\mbox{number of pairs $(T_1,T_2)$ with $n$ leaves such that $I(T_1)=I(T_2)$}}{N}.
+$$
+The balance indices have been computed with the function `balance.indices`
+from the package *CollessLike* (see Section [\color{blue}{\text{A.6.1}}](#package)), with the parameter `binary.Colless`
+set to `TRUE`. The following functions compute these probabilities $\widehat{p}_n$:
+```{r}
+are.tie = function(xx,yy) return(xx==yy) 
+
+exact.ties = function(){
+  trees = list()
+  all.indices = list()
+  num.ties = c(0,0,0) 
+  prob.ties = list()
+  for(n in 3:7){
+    trees[[n]] = read.tree(file = paste("bintrees-n",n,".txt",sep=""))
+    total.trees = length(trees[[n]])
+    total.pairs = total.trees*(total.trees-1)/2
+    all.indices[[n]] = matrix(sapply(trees[[n]],
+                             balance.indices2),ncol=3,byrow=T) 
+    num.ties[1]=sum(outer(all.indices[[n]][,1],
+                            all.indices[[n]][,1],are.tie))
+    num.ties[2]=sum(outer(all.indices[[n]][,2],
+                            all.indices[[n]][,2],are.tie))
+    num.ties[3]=sum(outer(all.indices[[n]][,3],
+                            all.indices[[n]][,3],are.tie))
+    num.ties = (num.ties-total.trees)/2
+    prob.ties[[n]] = num.ties/total.pairs
+    print(paste("Ties for n =",n," : ",    
+                paste(c("p_C=","p_S=","p_Phi"),
+                round(prob.ties[[n]],4),collapse=", "),sep=""))
+  }
+  return(prob.ties)
+}
+
+sim.ties.n = function(n,num.pairs.sim=3000){ 
+  num.ties = c(0,0,0)
+  for(i in 1:num.pairs.sim){
+    t1 = rtree(n,rooted=TRUE)
+    continue = TRUE
+    while(continue){
+      t2 = rtree(n,rooted=TRUE)
+      continue = all.equal(t1,t2,use.length=FALSE,use.tip.label=FALSE)
+    }
+    t1.indices = balance.indices2(t1)
+    t2.indices = balance.indices2(t2)
+    num.ties = num.ties + (t1.indices==t2.indices)
+  } 
+  print(paste("n =",n))
+  print(paste("Ties :",num.ties))
+  prob.ties = num.ties/num.pairs.sim
+  print(paste("Prob :",round(prob.ties,4)))
+  return(prob.ties)
+}
+```
+
+Now, with the following commands we compute the probabilities for each $n=3,\ldots,50$
+```{r,eval=FALSE}
+ties.1 = exact.ties()
+ties.2 = lapply(8:50, sim.ties.n,num.pairs.sim=3000)
+ties = matrix(c(unlist(ties.1),unlist(ties.2)),ncol=3,byrow=TRUE)
+colnames(ties)=c("Colless","Sackin","Cophenetic")
+rownames(ties)=3:50
+```
+For $n=4,...,20$ the results are:
+```{r,eval=FALSE}
+ties[1:18,]
+```
+```{r,echo=FALSE}
+ties=read.table("./C2-table-ties.txt")
+kable(ties[1:18,])
+```
+ 
+The whole table is available at "C2-table-ties.txt". Fig. 2.14, which summarizes the results, has been produced with the following commands:
+```{r C2-ties, out.width = "90%",fig.align="center"}
+plot(log(3:50),log(ties[,3]),type="l",
+     xlab="log of the number of leaves",
+     ylab="log of the probability of tie", col="blue")
+lines(log(3:50),log(ties[,1]),col="red")
+lines(log(3:50),log(ties[,2]),col="green")
+legend("bottomleft", legend=c("Sackin","Colless","Cophenetic"),
+       col=c("green","red", "blue"),lty=1, cex=0.8)
+```
+
+
+
+## A.4.7 Testing  $\Phi_n$ on TreeBASE {#tb2}
+
+In this subsection we explain how we have performed the test reported in Section 2.8.2.
+We have loaded the data table containing the Newick representations of all
+trees in TreeBASE, which we had previously downloaded using the function
+`search_treebase()` of the R package *treebase* and saved in the [$\color{blue}{\text{\emph{List of Trees}}}$](https://github.com/LuciaRotger/PhD-Code/tree/master/List%20of%20Trees)
+folder of the PhD Thesis GitHub repository as a text file and as an R object.
+So, we have two ways to import these data:
+```{r,eval=FALSE}
+# Option 1
+tb.ape = read.tree(file = "./tb-newicks.txt")
+# Option 2
+load("./treeBASE-database.RData")
+```
+
+We have considered only those numbers $n$ of leaves for which the TreeBASE
+contains at least 20 binary phylogenetic trees with $n$ leaves, and for each such $n$ we have computed the mean of the total cophenetic indices of the corresponding binary trees:
+```{r,eval=FALSE}
+bin.tb.ape=tb.ape[sapply(tb.ape,is.rooted)] 
+bin.tb.ape=bin.tb.ape[sapply(bin.tb.ape,is.binary)] 
+bin.tb.n = sapply(bin.tb.ape,Ntip)
+leaves=as.numeric(names(which(table(bin.tb.n)>20)))
+bin.tb.mean = c()
+indices.tb = list()
+for(k in leaves){
+  trees = bin.tb.ape[bin.tb.n==k]
+  indices.tb[[k]] = sapply(trees, cophen.index)
+  value = mean( indices.tb[[k]] )
+  bin.tb.mean = rbind(bin.tb.mean,c(k,value))
+}
+```
+The results of these computations are available in "C2-table-tb-means.txt".
+```{r,echo=FALSE}
+bin.tb.mean=read.table("./C2-table-tb-means.txt",header = TRUE)
+```
+
+
+The following code computes $E_Y(\Phi_n)$ and $E_U(\Phi_n)$ for $n=3,\dots,140$, using functions `EYPhi` and `EUPhi` from Section  [$\color{blue}{\text{A.4.1}}$](#eyphi) and Section [$\color{blue}{\text{ A.4.2}}$](#eyphi), respectively:
+```{r}
+range.plot = 3:140
+eyphi.values = sapply(range.plot, EYPhi)
+euphi.values = sapply(range.plot, EUPhi)  
+```
+Using the computations of the variance of $\Phi_n$ under the uniform model (from Section [$\color{blue}{\text{A.4.3}}$](#varphi)) and the exact formula for $\sigma^2_Y(\Phi_n)$ (Formula 2.2) we can obtain the reference intervals for $\Phi_n$ that will be drawn in the figure..
+```{r}  
+harmonic2 = function(n){return(sum(1/((1:n)^2)))}
+varYPhi = function(n){
+  return((n^4-10*n^3+131*n^2-2*n)/12-4*n^2*harmonic2(n)-
+            6*n*harmonic(n))
+} 
+varYPhi.values = sapply(range.plot,varYPhi)
+intY = cbind(range.plot,log(eyphi.values-sqrt(varYPhi.values)),
+               log(eyphi.values+1*sqrt(varYPhi.values)))
+intU = cbind(range.plot,log(euphi.values-
+            sqrt(var.values.Phi[range.plot])),
+            log(euphi.values+1*sqrt(var.values.Phi[range.plot])))
+
+draw.intervals = 
+  function(range.plot,int.yule,int.uniform,delta=0){
+  epsilon = 0.3 
+  for(i in range.plot){
+    lines(c(i ,i ),int.uniform[i-2,2:3],col="cyan")
+    lines(c(i-epsilon,i+epsilon),rep(int.uniform[i-2,2],2),
+            col="cyan") 
+    lines(c(i-epsilon,i+epsilon),rep(int.uniform[i-2,3],2),
+            col="cyan") 
+    lines(c(i ,i )-delta,int.yule[i-2,2:3],col="violet")
+    lines(c(i-epsilon,i+epsilon)-delta,rep(int.yule[i-2,2],2),
+            col="violet")
+    lines(c(i-epsilon,i+epsilon)-delta,rep(int.yule[i-2,3],2),
+            col="violet")
+  }
+}
+```
+
+
+Finally, the following code produces Fig. 2.15:
+```{r,echo=FALSE}
+par(mar=c(0.2,0.2,0.2,0.2))
+```
+```{r C2-index-TB, out.width = "72%",fig.align="center"}   
+plot(NULL,NULL,col="blue",xlab="number of leaves",
+      ylab="log of means",xlim=c(3,130),ylim=c(1,11.5),
+     type="l",lwd=2)
+draw.intervals(range.plot,intY,intU,delta=0.3) 
+lines(range.plot,log(eyphi.values),col="red",lwd=2)
+lines(range.plot,log(euphi.values),col="blue",lwd=2)
+lines(bin.tb.mean[,1],log(bin.tb.mean[,2]),type="l",lwd=2) 
+legend("bottomright", legend=c(expression(E[U]*(Phi[n])),
+        "Uniform intervals","Treebase",expression(E[Y]*(Phi[n])),
+        "Yule intervals"),col=c( "blue","cyan","black","red",
+        "violet"),lty=1,cex=0.8)   
+```
+```{r,echo=FALSE}
+par(mar=c(2,2,2,2))
+```
+
+#A.5 Scripts from Chapter 3 {#chap3}
+##A.5.1 Computation of $E(D^2_n)$  {#eD2n}
+The formulas in Theorem 3.31 and 3.38, ccorresponding to the expected
+value of $D^2_n$ under the Yule and uniform models, respectively, can be computed with the following functions:
+```{r}
+harmonic=function(n){return(sum(1/(1:n)))}
+EYD2n = function(n){
+  return((2*n/(n-1))*(3*n^2-10*n-1+8*(n+1)*harmonic(n)-
+                        4*(n+1)*harmonic(n)^2))
+}
+
+EUD2n = function(n){
+  return((4*n^3+18*n^2-10*n)/3+as.numeric(-as.bigq((n*(n+3))/2)*
+            (big.double.factorial(2*n-2)/
+                big.double.factorial(2*n-3))
+            -as.bigq((n*(n+7))/4)*((big.double.factorial(2*n-2)/
+                big.double.factorial(2*n-3))^2)))
+}
+```
+
+For $n=3,...,20$ the results are:
+```{r}
+# Yule model
+sapply(3:20, EYD2n)
+# uniform model
+sapply(3:20, EUD2n)
+```
+
+To double-check the formulas, we have computed the values of $d_{\varphi,2}(T,T')^2$, for $n=3,\ldots,7$, from the cophenetic distance between all pairs of trees in the correponding $\mathcal{BT}_n$.
+ 
+The cophenetic vectors of the phylogenetic trees have been
+computed with the function `cophen.vect` in the R package *CollessLike*. In
+the Yule case, we have used the function yule.prob explained in Section [\color{blue}{\text{A.4.1}}](#eyphi) to
+compute the probabilities. Finally, the expected values and the variances of
+the square of the cophenetic distance for each $n$ have been computed in the
+usual way:  
+```{r,eval=FALSE}
+real.exp.var = function(n.max=7){ 
+  means = matrix(0,ncol=2,nrow=8)
+  colnames(means) = c("uniform","Yule")
+  vars = matrix(0,ncol=2,nrow=8)
+  colnames(vars) = c("uniform","Yule")
+  for(n in 3:n.max){
+    trees = read.tree(file = paste("bintrees-n",n,".txt",sep=""))
+    total.trees = length(trees) 
+    probs=sapply(trees, yule.prob)
+    pairs.probs = c()
+    all.vectors = lapply(trees, cophen.vect)
+    values = c()
+    for(i in 1:(total.trees)){
+      for(j in (1):total.trees){
+        values = c(values,sum((all.vectors[[i]]-
+                                  all.vectors[[j]])^2))
+        pairs.probs = c(pairs.probs,probs[i]*probs[j])
+      }
+    }
+    means[n,1]=mean(values)
+    means[n,2]=sum(pairs.probs*values)
+    vars[n,1]=mean(values^2)-means[n,1]^2
+    vars[n,2]=sum(pairs.probs*values^2)-means[n,2]^2
+    print(paste("n =",n))
+    print(means[n,])
+    print(vars[n,])
+  }
+  results = cbind(3:7,means[3:7,2],vars[3:7,2],means[3:7,1],
+                    vars[3:7,1])
+  colnames(results) = c("n","EY(D2n)","varY(D2n)","EU(D2n)",
+                          "varU(D2n)")
+  return(results)
+}
+results=real.exp.var()
+```
+
+We have obtained the following results. They agree with the gures given
+by our formulas.
+
+$n$       | 3 |   4  |    5   |    6   |    7  
+-----------|:-----------:|:-----------:|:-----------:|:-----------:|:----------:
+$E_Y(D_n^2)$        | 2.66667 | 9.40741  | 21.18333  | 38.71200  | 62.55619
+$E_U(D_n^2)$        | 2.66667 | 10.56000 | 26.23673  | 52.30234  | 91.40863
+
+In the previous chunk of code, we have also computed the exact values for
+the variance:
+
+$n$       | 3 |   4  |    5   |    6   |    7  
+-----------|:-----------:|:-----------:|:-----------:|:-----------:|:----------:
+$\sigma^2_Y(D_n^2)$ | 3.55556 | 29.13032 | 117.63306 |339.28881  | 797.15834
+$\sigma^2_U(D_n^2)$ | 3.55556 | 34.08640 | 159.50314 | 539.50829 | 1502.72330
+  
+## A.5.2 Computation of $\sigma^2(D^2_n)$ {#varD2n}
+In order to estimate the asymptotic order of $E(D_n^4)$ and $\sigma^2( {D_n^2})$, both for the Yule and the uniform models, and for every $n = 3,\dots, 100$, we have randomly generated $N=10000$ pairs of binary trees $(T,T')\in \mathcal{T}_n\times \mathcal{T}_n$ using the R package
+*apTreeshape*, and converted them into *phylo* objects for the R package *ape*:
+```{r,eval=FALSE}
+require(apTreeshape)
+generate.trees = function(n,model,repetitions=10000){
+  if(model=="yule")trees=rtreeshape(repetitions*2,n,model="yule") 
+  if(model=="uniform")trees = rtreeshape(repe*2,n,model="pda") 
+  trees = lapply(trees,as.phylo)
+  return(trees)
+}
+```
+We have computed the value of $d_{\varphi,2}(T,T')^2$ and $d_{\varphi,2}(T,T')^4$ for each such pair $(T,T')$ with the following function, 
+```{r,eval=FALSE}
+computate.values.pairs = function(n,model,repetitions=10000){
+  euc.dist2 = function(pair){
+    m = length(pair)/2
+    value = sum((pair[1:m] - pair[(m+1):(2*m)])^2) 
+    return(value)
+  } 
+  trees=generate.trees(n,model,repetitions)
+  vectors = lapply(trees, cophen.vector)
+  vectors = matrix(unlist(vectors),byrow=T,nrow=repetitions)
+  result = apply(vectors,1,euc.dist2)
+  result = c(mean(result),mean(result^2))
+  return(c(result,result[2]-result[1]^2))
+}
+```
+
+We have computed the arithmetic means $\overline{D_n^2}$ and $\overline{D_n^4}$  of these $N$ values, and, finally, the variance of  the values $d_{\varphi,2}(T,T')^2$ using the identity 
+$$
+\widehat{\sigma^2}(D_n^2)=\overline{D_n^4}-\overline{D_n^2}^2.
+$$
+This value is an estimation of $\sigma^2 (D_n^2)$  under the corresponding model. Next commands show how we can compute these variances:
+```{r,eval=FALSE}
+varD2n = c()
+for(k in 3:100){
+  values.yule = computate.values.pairs(k,"yule",10000)
+  values.uniform = computate.values.pairs(k,"uniform",10000)
+  varD2n = rbind(varD2n,c(k,values.yule[2:3],values.uniform[2:3]))
+}
+colnames(varD2n) = c("n","Yule_EDn4","Yule_varDn2",
+                       "uniform_EDn4","uniform_varDn2")
+```
+Since these computations take a long time to finish, we have parallelized
+them with the R package _parallel_. For $n=3,...,20$ the results have been:
+```{r,eval=FALSE}
+varD2n[1:13,]
+```
+```{r, echo=FALSE}
+varD2n = read.table("./C4-table-expDn4-varDn2.txt",header=TRUE)
+kable(varD2n[1:13,],digits = 4)
+```
+
+The rest of the values are available in the file "C4-table-expDn4-varDn2.txt".
+
+We have computed the slope $\alpha$ of the  regression line of $\log(\overline{\sigma^2}({D_n^2}))$ as a function of $\log(n)$  using  the values for $n=50,\ldots,100$ with the following commands.
+```{r} 
+#var_Y(D2n) 
+reg.yule = lm(log(varD2n[48:98,3])~log(50:100))
+summary(reg.yule) 
+#var_U(D2n) 
+reg.uniform = lm(log(varD2n[48:98,5])~log(50:100))
+summary(reg.uniform)
+```
+Finally, the following commands produce Fig. 3.26:
+```{r C3-regression-var,out.width = "85%",fig.align="center"}  
+plot(log(3:100),log(varD2n[,5]),
+          xlab="log of the number of leaves",
+          ylab=expression("log of the variance of "*D[n]^2))
+abline(reg.uniform,col="blue",lwd=2)
+points(log(3:100),log(varD2n[,3])) 
+abline(reg.yule,col="red",lwd=2)
+legend("topleft",legend=c("Uniform model","Yule model"),
+          col=c("blue","red"),lty=1,cex=0.8)  
+```
+
+#A.6 Scripts from Chapter 4 {#chap4}
+
+
+## A.6.1 The R package *CollessLike* {#package}
+
+We have written the R package *CollessLike*, available on the CRAN and
+on the GitHub, that computes the Colless-like indices and their normalized
+version, as well as several other balance indices, and simulates the distribution of these indices under the $\alpha$-$\gamma$-model. We describe its contents in this subsection.
+The following function computes the Sackin index of a tree. The value can
+be normalized with `norm=TRUE`.
+```{r,eval=FALSE}
+sackin.index <-
+  function(tree,norm=FALSE){  
+    if(class(tree)=="character") 
+      tree=read.tree(text = tree)
+    if (class(tree)=="phylo") 
+      tree=graph.edgelist(tree$edge, directed=TRUE)  
+    if(class(tree)!="igraph")
+      stop("Not an igraph object. Please introduce a newick
+           string, an ape tree or an igraph tree.")
+    root.node = which(degree(tree,mode="in")==0) 
+    deg.out = degree(tree,mode="out") 
+    if(deg.out[root.node]==1){ #exists a root-edge
+      tree = delete.vertices(tree,root.node) 
+      deg.out = degree(tree,mode="out") 
+      root.node = which(degree(tree,mode="in")==0)
+    } 
+    leaves = which(deg.out==0)
+    root.list = get.shortest.paths(tree,root.node)$vpath 
+    depths = unlist(lapply(root.list,function(xx){length(xx)-1}))
+    SACKIN=sum(depths[leaves])  
+    if(norm){ 
+      N = length(leaves)
+      max.s = N*(N-1)/2 + N-1  
+      SACKIN = (SACKIN-N)/(max.s-N) 
+    }
+    return(SACKIN)
+  }
+```
+
+The following function computes the total cophenetic index of a tree. The
+value can be normalized with `norm=TRUE`.
+```{r,eval=FALSE}
+cophen.index <-
+  function(tree,norm=FALSE){  
+    if(class(tree)=="character") 
+      tree=read.tree(text = tree)
+    if (class(tree)=="phylo") 
+      tree=graph.edgelist(tree$edge, directed=TRUE)  
+    if(class(tree)!="igraph")
+      stop("Not an igraph object. Please introduce a newick
+           string, an ape tree or an igraph tree.")
+    root.node = which(degree(tree,mode="in")==0)
+    deg.out = degree(tree,mode="out") 
+    if(deg.out[root.node]==1){ #exists a root-edge
+      tree = delete.vertices(tree,root.node) 
+      deg.out = degree(tree,mode="out") 
+      root.node = which(degree(tree,mode="in")==0)
+    } 
+    leaves = which(deg.out==0)
+    root.list = get.shortest.paths(tree,root.node)$vpath
+    # COPHENETIC # 
+    N = length(leaves)
+    COPHEN = 0  
+    for(i in 1:(N-1))
+      for(j in (i+1):N){
+        aux  = length(intersect(root.list[[leaves[i]]],
+                                root.list[[leaves[j]]]))-1
+        COPHEN = COPHEN + aux    
+      } 
+    if(norm){ 
+      max.c = N*(N-1)*(N-2)/6 
+      COPHEN = COPHEN/max.c
+    }
+    return(COPHEN)
+  }
+```
+
+The following function computes the Colless-like index of a tree. The value
+can be normalized with `norm=TRUE`. By default, the $f$-size is $f(n) = \ln(n + e)$, if `f.size="exp"` then $f(n) = e^n$. It can also be a user-defined function but in this case, the index cannot be normalized. On the other hand, the default value of the dissimilarity is MDM (mean deviation from the median). Other values can be set as `diss="sd"` for the sample standard deviation or `diss="var"` for the sample variance. It can also be a user-defined function but, again, in this case the value cannot be normalized.
+```{r,eval=FALSE}
+colless.like.index <-
+  function(tree,f.size="ln",diss="MDM",norm=FALSE){  
+    if(class(tree)=="character") 
+      tree=read.tree(text = tree)
+    if (class(tree)=="phylo") 
+      tree=graph.edgelist(tree$edge, directed=TRUE)  
+    if(class(tree)!="igraph")
+      stop("Not an igraph object. Please introduce a newick
+           string, an ape tree or an igraph tree.")
+    root.node = which(degree(tree,mode="in")==0)
+    deg.out = degree(tree,mode="out") 
+    case.norm = 0
+    if(class(f.size)=="character"){
+      if(f.size=="ln"){
+        f.size = function(nn)  return(log(nn+exp(1)))
+        case.norm = 1
+      }
+      else if((f.size=="exp")||(f.size=="e")){
+        f.size = function(nn)  return( exp(nn) )
+        case.norm = 4
+      }
+      else stop("The f-size introduced is not correct.")
+    }
+    if(class(diss)=="character"){
+      if((diss=="MDM")||(diss=="mdm")){
+        diss = function(xx)
+                  return(sum(abs(xx-median(xx)))/length(xx))
+        case.norm = case.norm*1
+      }
+      else if(diss=="var"){
+        diss = function(xx) return(sum((xx-mean(xx))^2)/
+                                     (length(xx)-1))
+        case.norm = case.norm*2
+      }
+      else if(diss=="sd"){
+        diss = function(xx) return(sqrt(sum((xx-mean(xx))^2)/
+                                           (length(xx)-1)))
+        case.norm = case.norm*3
+      }
+      else stop("The dissimilarity introduced is not correct.")
+    } 
+    int.nodes = (1:length(V(tree)))[deg.out>0] 
+    decendents = neighborhood(tree,1,int.nodes,mode = "out")  
+    fun.nodes.deltas = function(nodes){ 
+      aux = neighborhood(tree,length(deg.out)-1,nodes,
+                          mode = "out")[[1]]  
+      return(sum(f.size(deg.out[aux]))) 
+    }
+    fun.children = function(children){
+      children = children[-1] 
+      result =  unlist(lapply(children,fun.nodes.deltas))
+      return(result)
+    } 
+    deltas = lapply(decendents,fun.children)
+    Vdiss = lapply(deltas, diss)
+    COLLESS = sum(unlist(Vdiss)) 
+    if(norm){
+      if(case.norm==0) warning("Indices can not be normalized")
+      else{ 
+        N = length(which(deg.out==0))
+        # ln MDM
+        if(case.norm==1)  
+          max.cl = (f.size(0) + f.size(2))*(N-1)*(N-2)/4 
+        # ln var
+        if(case.norm==2)  
+          max.cl = (f.size(0) + f.size(2) )^2*(N-1)*(N-2)*
+                    (2*N-3)/12
+        # ln sd
+        if(case.norm==3)  
+          max.cl = (f.size(0) + f.size(2))*(N-1)*(N-2)/
+                    (2*sqrt(2))
+        # e^n var
+        if(case.norm==8)  max.cl = (f.size(N-1)+N-2)^2/2
+        if(N==4){
+          # e^n MDM
+          if(case.norm==4)  max.cl = (f.size(2)+1)*3/2
+          # e^n sd
+          if(case.norm==12) max.cl =(f.size(2)+1)*3/sqrt(2)
+        }
+        else{
+          # e^n MDM
+          if(case.norm==4)  max.cl = (f.size(N-1)+N-2)/2
+          # e^n sd
+          if(case.norm==12) max.cl = (f.size(N-1)+N-2)/sqrt(2)
+        }
+        COLLESS  = COLLESS /max.cl 
+      }
+    }
+    return(COLLESS)
+  }
+
+```
+
+
+The next function assembles the three previous functions. So, it computes
+the three indices and returns a single array with the three values. The results can be normalized. If `binary.Colless=TRUE`, it computes the classical Colless index for binary trees (previously checking that the input tree is binary).
+```{r,eval=FALSE}
+balance.indices <- function(tree,norm=FALSE,binary.Colless=FALSE){  
+    if(class(tree)=="character") 
+      tree=read.tree(text = tree)
+    if (class(tree)=="phylo") 
+      tree=graph.edgelist(tree$edge, directed=TRUE)  
+    if(class(tree)!="igraph")
+      stop("Not an igraph object. Please introduce a newick
+           string, an ape tree or an igraph tree.")
+    root.node = which(degree(tree,mode="in")==0)
+    deg.out = degree(tree,mode="out") 
+    # COLLESS.MDM.LN
+    D.MDM = function(xx)
+        return(sum(abs(xx-median(xx)))/length(xx))
+    f.ln   = function(n)  return(log(n+exp(1))) 
+    int.nodes = (1:length(V(tree)))[deg.out>0]  
+    decendents = neighborhood(tree,1,int.nodes,mode = "out")  
+    fun.nodes.deltas = function(nodes){ 
+      aux = neighborhood(tree,length(deg.out)-1,nodes,
+                         mode = "out")[[1]]  
+      return(sum(f.ln(deg.out[aux]))) 
+    }
+    fun.children = function(children){
+      children = children[-1] 
+      result =  unlist(lapply(children,fun.nodes.deltas))
+      return(result)
+    } 
+    deltas = lapply(decendents,fun.children)
+    Vdis = lapply(deltas, D.MDM)
+    COLLESS = sum(unlist(Vdis))  
+    if(deg.out[root.node]==1){ #exists root-edge
+      tree = delete.vertices(tree,root.node) 
+      deg.out = degree(tree,mode="out") 
+      root.node = which(degree(tree,mode="in")==0)
+    } 
+    leaves = which(deg.out==0)
+    root.list = get.shortest.paths(tree,root.node)$vpath
+    # SACKIN #
+    depths = unlist(lapply(root.list,
+                           function(xx){length(xx)-1}))
+    SACKIN=sum(depths[leaves]) 
+    # COPHENETIC # 
+    N = length(leaves)
+    COPHEN = 0  
+    for(i in 1:(N-1))
+      for(j in (i+1):N){
+        aux  = length(intersect(root.list[[leaves[i]]],
+                                root.list[[leaves[j]]]))-1
+        COPHEN = COPHEN + aux    
+      } 
+    result = c("Colles-Like"=COLLESS,"Sackin"=SACKIN,
+                "Cophenetic"=COPHEN)
+    if(binary.Colless){
+      if(sum(!(deg.out %in% c("0","2")))==0) 
+        result[1] = result[1]/((log(0+exp(1))+log(2+exp(1)))/2)
+      else warning("The tree introduced is not binary,
+                   Colless-like index for multifurcated trees is
+                   computed.")
+    }
+    else{
+      if(norm){
+        max.cl = ( log(0+exp(1)) + log(2+exp(1)) )*(N-1)*(N-2)/4
+        max.s = N*(N-1)/2 + N-1
+        max.c = N*(N-1)*(N-2)/6
+        result[1] = result[1]/max.cl
+        result[2] = (result[2]-N)/(max.s-N)
+        result[3] = result[3]/max.c
+      }
+    }
+    return(result)
+  }
+```
+
+
+The following function computes the total cophenetic vector of a tree.
+```{r,eval=FALSE}
+cophen.vector <-  function(tree,set.of.labels=NULL){  
+    if(class(tree)=="character")
+      tree=read.tree(text = tree)
+    if (class(tree)=="phylo"){
+      if(is.null(set.of.labels))
+        set.of.labels = tree$tip.label 
+      tree=graph.edgelist(tree$edge, directed=TRUE)  
+    }
+    if(class(tree)!="igraph")
+      stop("Not an igraph object. Please introduce a newick
+           string, an ape tree or an igraph tree.")
+    if(is.null(set.of.labels))    
+      stop("Please insert the set of labels or a phylo object")
+    root.node = which(degree(tree,mode="in")==0)
+    deg.out = degree(tree,mode="out") 
+    if(deg.out[root.node]==1){ #exists a root-edge
+      tree = delete.vertices(tree,root.node) 
+      deg.out = degree(tree,mode="out") 
+      root.node = which(degree(tree,mode="in")==0)
+    } 
+    leaves = which(deg.out==0)
+    if(length(set.of.labels)!=length(leaves))
+      stop("Please insert the correct set of labels or a phylo
+           object")
+    root.list = get.shortest.paths(tree,root.node)$vpath
+    # COPHENETIC # 
+    N = length(leaves)
+    COPHEN = c()
+    ordered.leaves=order(set.of.labels)
+    for(i in 1:(N-1)){
+      leaf.i = ordered.leaves[i]
+      COPHEN = c(COPHEN,length(root.list[[leaf.i]])-1)
+      for(j in (i+1):N){
+        leaf.j = ordered.leaves[j]
+        aux  = length(intersect(root.list[[leaves[leaf.i]]],
+                                root.list[[leaves[leaf.j]]]))-1
+        COPHEN = c(COPHEN,aux)    
+      }
+    }  
+    COPHEN = c(COPHEN,length(root.list[[ordered.leaves[N]]])-1)
+    return(COPHEN) 
+  }
+
+```
+
+
+Given `alpha`, `gamma` and the number of leaves `n`, the following function
+generates a random phylogenetic tree with $n \geqslant 3$ leaves with the probability distribution defined by the $\alpha$-$\gamma$-model.
+```{r,eval=FALSE}
+a.g.model <-
+  function(n,alpha,gamma){
+    if(n<3) 
+      stop("n<3")
+    else{
+      if((alpha>1)||(alpha<0)||(gamma>1)||(gamma<0))
+        stop("alpha and gamma must been between 0 and 1")
+      else{
+        if(alpha<gamma)
+          stop("alpha < gamma")
+        else{  
+          edge.matrix = matrix(c(1,2,2,3,2,4),byrow=T,ncol=2) 
+          n.nodes = 4
+          n.edges = 3
+          for(n.leaves in 3:n){#Add new leaf
+            #Asign probabilities
+            probabilities = rep(0,n.nodes+n.edges)
+            degrees = rep(0,n.nodes)
+            degree.table = table(edge.matrix[,1]) 
+            degrees[as.numeric(names(degree.table))]=degree.table
+            
+            leaves = which(degrees==0)
+            leaf.edge =  which(edge.matrix[,2]%in%leaves)
+            
+            probabilities[1:n.edges + n.nodes] = gamma
+            probabilities[leaf.edge+n.nodes] = 1-alpha
+            probabilities[which(degrees>1)]=(degrees[degrees>1]-1)*alpha-gamma
+            probabilities = probabilities/(n.leaves-alpha)
+            
+            random = sample(c(1:n.nodes,1:n.edges+n.nodes),
+                            1,prob=probabilities)
+            
+            if(random<=n.nodes){#a node is selected
+              edge.matrix = rbind(edge.matrix,c(random,n.nodes+1)) 
+              n.nodes = n.nodes+1
+              n.edges = n.edges+1
+            }
+            else{#an edge is selected
+              random = random - n.nodes
+              edge.matrix = rbind(edge.matrix,
+                            c(edge.matrix[random,1],n.nodes+1)) 
+              edge.matrix = rbind(edge.matrix,
+                            c(n.nodes+1,edge.matrix[random,2])) 
+              edge.matrix = rbind(edge.matrix,
+                            c(n.nodes+1,n.nodes+2)) 
+              edge.matrix = edge.matrix[-random,]
+              n.nodes = n.nodes+2
+              n.edges = n.edges+2
+            }
+          }
+          tree = graph.edgelist(edge.matrix) 
+          deg.out = degree(tree,mode="out")
+          root.node = which(degree(tree,mode="in")==0)
+          if(deg.out[root.node]==1){ #Erase the root-edge
+            tree = delete.vertices(tree,root.node)  
+          } 
+          return(tree)
+        }
+      }
+    }
+  } 
+```
+
+The following function generates a list of trees with the probability distribution defined by an $\alpha$-$\gamma$-model and then it computes their Colless-like, Sackin and total cophenetic indices.
+```{r,eval=FALSE}
+indices.simulation <-
+function(n,alpha=NA,gamma=NA,repetitions=1000,norm=FALSE){ 
+    only.one=FALSE
+    if(is.na(alpha)){
+        parameters = expand.grid(seq(0,1,0.1),seq(0,1,0.1),n)
+        parameters = parameters[which(parameters[,1]>=
+                                        parameters[,2]),]
+    }    
+    else{
+      if(is.na(gamma)){
+        parameters = expand.grid(alpha,seq(0,alpha,0.1),n)
+        parameters = parameters[which(parameters[,1]>=
+                                        parameters[,2]),]
+      }
+      else{ 
+        if((alpha>1)||(alpha<0)||(gamma>1)||(gamma<0))
+          stop("alpha and gamma must been between 0 and 1")
+        else
+          if(alpha<gamma)
+            stop("alpha < gamma")
+          else{
+            parameters = c(alpha,gamma,n)
+            only.one = TRUE
+          }
+      }
+    }
+    generator = function(idx,n,alpha,gamma){
+      return(a.g.model(n,alpha,gamma))
+    }
+    iterate.ford = function(tab){ #tab = [alpha,gamma,n]
+        if(tab[1]>=tab[2]){
+            alpha = tab[1]
+            gamma = tab[2]
+            n = tab[3]
+            print(paste("n :",n," alpha :",alpha,
+                        " gamma :",gamma))
+            tree.list = lapply(1:repetitions,generator,n,
+                               alpha,gamma)  
+            result = matrix(unlist(lapply(tree.list,
+                    balance.indices,norm=norm)),ncol=3,byrow=T)
+            colnames(result) = c("COLLES.MDM.LN","SACKIN",
+                                 "COPHENETIC") 
+        }
+        return(result)
+    } 
+    if(only.one){
+      result = iterate.ford(parameters) 
+    }
+    else{
+      parameters2=lapply(1:(dim(parameters)[1]),
+                         function(i) as.numeric(parameters[i,]))
+      result = lapply(parameters2,iterate.ford)
+      paste.param = function(tab){
+        return(paste("a",tab[1],"g",tab[2],sep=""))
+        }
+      names(result) = apply(parameters,1,paste.param)
+    }
+    return(result)
+}
+```
+
+The following function, given $\alpha$,$\gamma$ and a phylogenetic tree, plots the distribution of the normalized versions of the Colless-like, Sackin and total cophenetic indices under the $\alpha$-$\gamma$-model on $\mathcal{T}_n$. It also computes the percentiles of the indices of the tree under this $\alpha$-$\gamma$-model. Two plots are available: one represents
+the percentile plots of the normalized balance indices (`percentile.plot=TRUE`), and the other represents the density plots of the normalized balance indices (`percentile.plot=FALSE`). In order to compute the distribution and percentiles, this function needs a database of trees generated under the $\alpha$-$\gamma$-model. Our database is available on the 
+[$\color{blue}{\text{\emph{GitHub}}}$](https://github.com/LuciaRotger/CollessLike/tree/master/CollessLikeDataBase).
+The trees stored in our database have between 3 and 50 leaves and the values of the parameters `alpha` and `gamma` are in $\{0,0.1,\dots,1\}$ such that `gamma` $\leqslant$ `alpha`.
+If the introduced parameters are not in the list, a new computation is done
+with them and a new dataset of trees is generated, and their indices are also
+computed. The number of trees generated can be modified by the parameter `repetitions` (see `indices.simulation` for more information). This computation may take some time, therefore you can compute the trees separately with `indices.simulation`, save their values and then call this function by setting them as the value of parameter `set.indices`.
+```{r,eval=FALSE}
+distribution <- function(tree,alpha=NA,gamma=NA,set.indices=NULL,
+           new.simulation=FALSE,repetitions=1000,
+           legend.location="topright",cex=0.75,
+           percentile.plot=FALSE,db.path=getwd() ){
+    ## Class of object "tree"
+    if(class(tree)=="character") 
+      tree=read.tree(text = tree)
+    if (class(tree)=="phylo") 
+      tree=graph.edgelist(tree$edge, directed=TRUE)  
+    if(class(tree)!="igraph")
+      stop("Not an igraph object. Please introduce a newick
+           string, an ape tree or an igraph tree.")
+    n = sum(degree(tree,mode="out")==0)
+    ## parameters alpha & gamma  
+    if(new.simulation){
+      print("This process might take a long time. If you want 
+            to save the indices simulation, please run 
+            'indices.simulation' directly and then call
+            'distribution' by setting the resulting table as 
+            the parameter 'set.indices'")
+      print("Remember, our indices data base is available to
+            download at: https://github.com/LuciaRotger/
+            CollessLike/tree/master/CollessLikeDataBase")
+      warning("New simulation required")
+      indices.list=indices.simulation(n,alpha,gamma,repetitions)
+      txt = bquote(paste("Parameters: ",alpha," = ",.(alpha),
+                         ", ",gamma," = ",.(gamma)))
+    }
+    else{
+      if(is.null(set.indices)){  
+        if(alpha<gamma){
+          print("Remember, our indices data base is available
+                to download at: https://github.com/LuciaRotger/
+                CollessLike/tree/master/CollessLikeDataBase")
+          stop("alpha < gamma")
+        }
+        else{
+          if((alpha>1)||(alpha<0)||(gamma>1)||(gamma<0)){
+            print("Remember, our indices data base is available
+                  to download at:https://github.com/LuciaRotger/
+                  CollessLike/tree/master/CollessLikeDataBase")
+            stop("alpha and gamma must been between 0 and 1")
+          }
+          else{ 
+            txt = bquote(paste("Parameters: n = ",.(n),",
+                               ",alpha," = ",.(alpha),",
+                               ",gamma," = ",.(gamma)))
+            if(paste("n",n,sep="")%in%dir(db.path)){ 
+              file = paste("CollessLikeDataBase_n",n,"_a",
+                  alpha*100,"_g",gamma*100, "_r5000.txt",sep="")
+              folder = paste(db.path,"n",n,"/",sep="")
+              if(file %in% dir(folder)){ 
+                indices.list=read.table(file=paste(folder,file,
+                                          sep=""), header=TRUE)
+              }
+              else {
+                print("Remember, our indices data base is
+                      available to download at:https://github.
+                      com/LuciaRotger/CollessLike/tree/master/
+                      CollessLikeDataBase")
+                stop(paste("The file '",file,
+                    "' is not located at '",folder,"'",sep=""))
+              }
+            }
+            else {
+              print("Remember, our indices data base is 
+                    available to download at: https://github.
+                  com/LuciaRotger/CollessLike/tree/master/
+                  CollessLikeDataBase")
+              stop(paste("The folder 'n",n,
+                   "' is not located at '",db.path,"'",sep=""))
+            }
+          }
+        }
+      }
+      else{
+        print("Indices Database introduced by user")
+        txt=""
+        indices.list = set.indices
+      }
+    } 
+    if(max(indices.list)>1){
+      ## maximum
+      max.cl = ( log(0+exp(1)) + log(2+exp(1)) )*(n-1)*(n-2)/4
+      max.s = n*(n-1)/2 + n-1
+      max.c = n*(n-1)*(n-2)/6
+      indices.list[,1] = round(indices.list[,1]/max.cl,4)
+      indices.list[,2] = round((indices.list[,2]-n)/(max.s-n),4)
+      indices.list[,3] = round(indices.list[,3]/max.c,4)
+    } 
+    # densities
+    d.cl= density(indices.list[,1])  
+    d.s = density(indices.list[,2])    
+    d.c = density(indices.list[,3])    
+    xlim = range(c(0,1))
+    ylim = range(c(0,d.cl$y,d.s$y,d.c$y))
+    
+    #tree
+    tree.indices = balance.indices(tree)
+    tree.indices = round(c(tree.indices[1]/max.cl,
+                           (tree.indices[2]-n)/(max.s-n),
+                           tree.indices[3]/max.c),4)
+    
+    f.cl=approxfun(d.cl$x,d.cl$y)
+    f.s=approxfun(d.s$x,d.s$y)
+    f.c=approxfun(d.c$x,d.c$y)
+    tree.densities = round(c(f.cl(tree.indices[1]),
+                             f.s(tree.indices[2]),
+                             f.c(tree.indices[3])),4)
+    tree.densities[is.na(tree.densities)]=0  
+    
+    a.cl = cumsum(d.cl$y)
+    a.cl=a.cl/max(a.cl) 
+    a.s= cumsum(d.s$y)
+    a.s= a.s/max(a.s) 
+    a.c= cumsum(d.c$y)
+    a.c= a.c/max(a.c)
+    #tree index plots percs
+    percs = c(a.cl[which(d.cl$x/max(d.cl$x)>tree.indices[1])[1]],
+              + a.s[which(d.s$x/max(d.s$x)>tree.indices[2])[1]],
+              + a.c[which(d.c$x/max(d.c$x)>tree.indices[3])[1]])
+    percs[is.na(percs)]=1
+    percs = round(percs,4)
+    
+    print(paste("Tree with n=",n," leaves",sep=""))
+    print(paste("Colles-like: ",tree.indices[1],
+                " (density:", tree.densities[1] ,"),
+                Percentile:", percs[1] ,sep=""))
+    print(paste("Sackin: ",tree.indices[2],
+                " (density:", tree.densities[2] ,"),
+                Percentile:", percs[2] ,sep=""))
+    print(paste("Cophenetic: ",tree.indices[3],
+                " (density:", tree.densities[3] ,"),
+                Percentile:", percs[3],sep="")) 
+    
+    #plots
+    par(xpd=FALSE) 
+    
+    if(!percentile.plot){
+      plot(-1,-1 , xlab = "", ylab="Distribution of indices",
+           xlim = xlim, ylim = ylim,xaxs = 'i', yaxs='i', 
+           main = 'Distribution of indices', 
+           panel.first = grid() )
+      
+      polygon(d.cl, density = -1, col=rgb(1,0,0,0.2),
+              border = "red",lwd = 1)
+      polygon(d.s, density = -1, col=rgb(0,1,0,0.2),
+              border = "green",lwd = 1)
+      polygon(d.c, density = -1, col=rgb(0,0,1,0.2),
+              border = "blue",lwd = 1)
+      legend(legend.location,c("Colles-Like","Sackin",
+              "Cophenetic"), fill = c(rgb(1,0,0,0.2),
+              rgb(0,1,0,0.2),rgb(0,0,1,0.2),bty ='n',
+              border = NA),cex=cex)
+       
+      lines(rep(tree.indices[1],2),c(0,tree.densities[1]),
+              col=rgb(1,0,0),lwd =2)
+      lines(rep(tree.indices[2],2),c(0,tree.densities[2]),
+              col=rgb(0,1,0),lwd =2)
+      lines(rep(tree.indices[3],2),c(0,tree.densities[3]),
+              col=rgb(0,0,1),lwd =2)
+      
+      lines(xlim,c(0,0),lwd=2)
+      
+      points(tree.indices[1],tree.densities[1],pch=21,
+              bg=rgb(1,0,0))
+      points(tree.indices[2],tree.densities[2],pch=21,
+              bg=rgb(0,1,0))
+      points(tree.indices[3],tree.densities[3],pch=21,
+              bg=rgb(0,0,1))
+    }
+    else{  
+      plot(-1,-1 , xlab = "", ylab="Percentiles",
+           xlim = xlim, ylim = c(0,1),xaxs = 'i', yaxs='i', 
+           main = 'Percentile Plot', panel.first = grid() )   
+      
+      lines(d.cl$x/max(d.cl$x),a.cl, col=rgb(1,0,0))
+      lines( d.s$x/max(d.s$x), a.s, col=rgb(0,1,0))
+      lines( d.c$x/max(d.c$x), a.c, col=rgb(0,0,1))
+      
+      legend("topleft",c("Colles-Like","Sackin","Cophenetic"),
+             fill = c(rgb(1,0,0,0.2),rgb(0,1,0,0.2),
+             rgb(0,0,1,0.2),bty ='n',border = NA),cex=cex)
+       
+      lines(rep(tree.indices[1],2),c(0,percs[1]),
+              col=rgb(1,0,0),lwd =2)
+      lines(rep(tree.indices[2],2),c(0,percs[2]),
+              col=rgb(0,1,0),lwd =2)
+      lines(rep(tree.indices[3],2),c(0,percs[3]),
+              col=rgb(0,0,1),lwd =2)
+      
+      lines(xlim,c(0,0),lwd=1)
+      
+      points(tree.indices[1],percs[1],pch=21,bg=rgb(1,0,0))
+      points(tree.indices[2],percs[2],pch=21,bg=rgb(0,1,0))
+      points(tree.indices[3],percs[3],pch=21,bg=rgb(0,0,1))
+      
+    }
+    mtext( txt , line = 0.3) 
+    mtext("Normalized indices",line = 2.5,side = 1)
+    mtext(bquote(paste("Percentiles: ",P[C],"=",.(percs[1]),
+              ", ", P[S],"=",.(percs[2]),",",P[Phi],
+              "=",.(percs[3]) )),line = 4,side = 1)
+    return(percs)
+  }
+```
+
+
+For instance, we have generated the random tree depicted in Fig. 4.10 under the $\alpha$-$\gamma$-model with $\alpha=0.7$ and $\gamma=0.4$ the following commands (using `set.seed(1000)` for reproducibility)
+```{r, echo=FALSE}
+par(mar=rep(0,4))
+```
+```{r C4-tree1,fig.width=5,out.width="70%", fig.align="center"}
+set.seed(1000)
+tree=a.g.model(8,0.7,0.4)
+plot(tree,layout=layout.reingold.tilford(tree,root=1))
+```
+```{r, echo=FALSE}
+par(mar=c(2,2,2,2))
+```
+
+We can compute the three balance indices (Colles-like, Sackin and total cophenetic) on this tree and their normalized values:
+```{r, }
+balance.indices(tree)
+balance.indices(tree,norm = TRUE)
+```
+ 
+Then, Fig. 4.11, displaying the estimation of the density function of the
+three balance indices under the $\alpha$-$\gamma$-model with $\alpha=0.7$ and $\gamma=0.4$ on $\mathcal{T}_8$, has been generated as follows:
+```{r C4-density-tree1,out.width = "70%",fig.align="center"}
+database.location = "D:/Recerca/sep_2015/sep_2016/CollessLike/CollessLikeDataBase/" 
+distribution(tree,0.7,0.4,db.path = database.location)
+```
+
+Fig. 4.12, which shows a percentile plot of the three balance indices under
+the $\alpha$-$\gamma$-model for $\alpha=0.7$ and $\gamma=0.4$ on $\mathcal{T}_8$ and the estimated percentiles of the balance indices of the tree, has been produced with the following command: 
+```{r C4-percentile-tree1,out.width = "70%",fig.align="center"}
+distribution(tree,0.7,0.4,db.path = database.location,percentile.plot = TRUE) 
+```
+
+
+The unlabeled tree of Fig. 4.13 has been generated (with `set.seed(1000)` using $n=8$ and $\alpha=\gamma=0.5$, which corresponds to the uniform model. The information on it and Fig. 4.14 have been obtained with the following code:
+```{r, echo=FALSE}
+par(mar=rep(0,4))
+```
+```{r C4-tree2,fig.width=5,out.width="80%", fig.align="center"}
+set.seed(1000)
+tree.uni=a.g.model(8,0.5,0.5)
+plot(tree.uni,layout=layout.reingold.tilford(tree.uni,root=1))
+balance.indices(tree.uni)
+balance.indices(tree.uni,norm = TRUE)
+```
+```{r, echo=FALSE}
+par(mar=c(2,2,2,2))
+```
+```{r C4-density-tree2,out.width = "70%",fig.align="center"}
+distribution(tree.uni,0.5,0.5,db.path = database.location)
+```
+```{r C4-percentile-tree2,out.width = "70%",fig.align="center"}
+distribution(tree.uni,0.5,0.5,db.path = database.location, percentile.plot = TRUE)
+```
+
+
+
+
+## A.6.2 A real example {#apes}
+The tree considered in Section 4.5.1 is the following:
+```{r}
+t1t2="((((Colonus_polykomos,Colobus_guereza)
+,Colobus_angolensis),Colobus_satanas),(
+(Procolobus_pennantii,Procolobus_badius),Procolobus_verus))"
+t3 = "(Nasalis_concolor,Nasalis_larvatus)"
+t4 = "((((Pygathrix_brelichi,Pygathrix_bieti)
+,Pygathrix_roxellana),Pygathrix_avunculus),Pygathrix_nemaeus)"
+t5 = "(Presbytis_potenziani,
+(Presbytis_comata,Presbytis_frontata,Presbytis_rubicunda,Presbytis_melalophos))"
+t6 = "(((((Trachypithecus_phayrei,Trachypithecus_obscurus)
+,Trachypithecus_pileatus,Trachypithecus_cristatus)
+,Trachypithecus_francoisi),Trachypithecus_auratus)
+,Trachypithecus_geei)"
+t7 = "((Trachypithecus_vetulus,Trachypithecus_johnii)
+,Semnopithecus_entellus)"    
+t8 = paste("(",t7,",",t6,",",t5,")",sep="")
+t9 = paste("(",t8,",",t4,")",sep="")
+t10 = paste("(",t9,",",t3,")",sep="")
+all.txt= paste("(",t10,",",t1t2,");",sep="")
+tree=read.tree(text = all.txt) 
+```
+
+The following command depicts this tree in Fig. 4.15:
+```{r, echo=FALSE}
+par(mar=rep(0,4))
+```
+```{r C4-real-tree,fig.width=8,fig.height=6,out.width="100%",fig.align="center"}  
+plot(tree) 
+``` 
+```{r, echo=FALSE}
+par(mar=c(2,2,2,2))
+```
+The three balance indices of this tree and their normalized values are obtained as follows:
+```{r, }
+balance.indices(tree)
+balance.indices(tree, norm = T)
+```
+
+
+To establish a relationship of the previous tree with the $\alpha$-$\gamma$-model we have computed the percentile of the tree for every  $(\alpha,\gamma)\in \{0,0.1,0.2,\ldots,0.9,1\}^2$ with $\gamma\leqslant \alpha$, in order to check the values of the parameters $(\alpha,\gamma)$ for which the tree has higher values.
+```{r,eval=FALSE} 
+percentile.matrix = matrix(NA,nrow = 11,ncol = 11,
+           dimnames = list(paste("al",seq(0,1,0.1),sep="_"),
+                            paste("ga",seq(0,1,0.1),sep="_")))
+ for(a in seq(0,1,0.1)){
+   for(g in seq(0,a,0.1)){
+     pers = distribution(tree,a,g,db.path = database.location)
+     percentile.matrix[a*10+1,g*10+1] = pers[1] 
+   }
+ } 
+```
+```{r,eval=FALSE,echo=FALSE} 
+write.table(percentile.matrix,row.names=TRUE,col.names=TRUE,
+              file="C4-real-example-percentiles.txt")
+```
+```{r,echo=FALSE}
+percentile.matrix=as.matrix(read.table(file="./C4-real-example-percentiles.txt",header = T))
+```
+
+The results are available at "C4-real-example-percentiles.txt" and the percentile plots at "C4-real-example-percentile-plots.pdf". 
+ 
+The heatmap of the Fig. 4.16 is obtained with the following code:
+```{r C4-heatmap, eval=TRUE, results='hide',warning=FALSE,message=FALSE}
+require(ggplot2)
+require(reshape2)  
+m1 = melt(percentile.matrix[,],na.rm=T) 
+names(m1)=c("Alpha","Gamma","Value" )
+a.g.range=seq(0,1,by = 0.1)
+gp1=ggplot(data=m1,aes(x=Alpha,y=Gamma,fill=Value))+
+              geom_tile(color="white")   
+gp1 + labs(title = "Colless-Like Index", x=bquote(alpha),
+              y=bquote(gamma))  
+```
+
+The parameters yielding the highest percentiles are 
+```{r,echo=FALSE}
+per.tab=matrix(c(0.9,0,0.9031,1,0.2,0.8725,1,0.1,0.8620,1,0.3,0.860),byrow=T,ncol=3)
+colnames(per.tab)=c("alpha","gamma","Percentile")
+kable(per.tab)
+```
+
+
+## A.6.3 Computation of the mean and variance {#meanvar}
+
+First of all, we upload the treeBASE database
+```{r,eval=TRUE}
+load("./treeBASE-database.RData",verbose = T)
+```
+
+
+Then, we compute each one of the three indices of all the trees and also its normalized version. The third vector is the number of leaves of each tree. 
+```{r,eval=FALSE}
+tb.idx = t(sapply(tb.ape,balance.indices))
+tb.idx.norm = t(sapply(tb.ape,balance.indices,norm = TRUE)) 
+tb.n = t(sapply(tb.ape,Ntip)) 
+````
+```{r,eval=FALSE,echo=FALSE}
+write.table(tb.idx,row.names = FALSE,file="C4-tb-indices.txt")
+write.table(tb.idx.norm,row.names = FALSE,file="C4-tb-indices-norm.txt")
+write.table(tb.n,"C4-tb-n.txt")
+```
+The results are available in the files "C4-tb-indices.txt","C4-tb-indices-norm.txt" and "C4-tb-n.txt".
+```{r,eval=TRUE,echo=FALSE}
+## HIDDEN
+tb.idx=read.table("./C4-tb-indices.txt",header=T)
+tb.idx.norm=read.table("./C4-tb-indices-norm.txt",header=T) 
+tb.n=read.table("./C4-tb-n.txt") 
+```
+
+Now, we can compute the means and variance of every index 
+```{r,eval=FALSE}
+tb.means = list(c(),c())
+tb.vars = list(c(),c())
+for(n in 3:max(tb.n)){
+  number.trees = which(tb.n==n)
+  if(length(number.trees)>0){
+    aux = list(tb.idx[number.trees,],
+                  tb.idx.norm[number.trees,])
+    if(!is.null(dim(aux[[1]]))){
+      means = list(colMeans(aux[[1]]),colMeans(aux[[2]]))
+      vars = list(apply(aux[[1]],2,var),apply(aux[[2]],2,var))
+    }
+    else{
+      means= aux
+      vars = list(c(0,0,0),c(0,0,0))
+    }
+    num = length(number.trees)
+    tb.means[[1]] = rbind(tb.means[[1]],c(n,means[[1]],num))
+    tb.vars[[1]] = rbind(tb.vars[[1]],c(n,vars[[1]],num))
+    tb.means[[2]] = rbind(tb.means[[2]],c(n,means[[2]],num))
+    tb.vars[[2]] = rbind(tb.vars[[2]],c(n,vars[[2]],num))
+  }
+}
+````
+```{r,eval=FALSE,echo=FALSE}
+colnames(tb.means[[1]]) [1]="Num.Leaves"
+colnames(tb.means[[1]]) [5]="Num.Trees"
+colnames(tb.means[[2]]) [1]="Num.Leaves"
+colnames(tb.means[[2]]) [5]="Num.Trees"
+colnames(tb.vars[[1]]) [1]="Num.Leaves"
+colnames(tb.vars[[1]]) [5]="Num.Trees"
+colnames(tb.vars[[2]]) [1]="Num.Leaves"
+colnames(tb.vars[[2]]) [5]="Num.Trees"
+write.table(tb.means[[1]],file="./C4-tb-means-ALL.txt",
+              col.names=T,row.names=F)
+write.table(tb.means[[2]],file="./C4-tb-means-norm-ALL.txt",
+              col.names=T,row.names=F)
+write.table(tb.vars[[1]],file="./C4-tb-vars-ALL.txt",
+              col.names=T,row.names=F)
+write.table(tb.vars[[2]],file="./C4-tb-vars-norm-ALL.txt",
+              col.names=T,row.names=F)
+```
+The results of these computations are available in "C4-tb-means-ALL.txt","C4-tb-means-norm-ALL.txt", "C4-tb-vars-ALL.txt" and "C4-tb-vars-norm-ALL.txt".
+```{r,eval=TRUE,echo=FALSE,results='hide'} 
+## HIDDEN
+tb.means=list(read.table("./C4-tb-means-ALL.txt",header=T),
+              read.table("./C4-tb-means-norm-ALL.txt",header=T))
+tb.vars=list(read.table("./C4-tb-vars-ALL.txt",header=T),
+              read.table("./C4-tb-vars-norm-ALL.txt",header=T)) 
+```
+We have chosen the trees with $n<300$ number of leaves and we have considered only those with more than 30 trees
+```{r,eval=FALSE}
+final.pos = which(tb.means[[1]][,1]==300)
+morethan30=which(tb.means[[1]][1:final.pos,5]>30) 
+tb.means.reg = tb.means[[1]][morethan30,]
+tb.means.reg.norm = tb.means[[2]][morethan30,]
+tb.vars.reg = tb.vars[[1]][morethan30,]
+tb.vars.reg.norm = tb.vars[[2]][morethan30,]
+````
+```{r,eval=FALSE,echo=FALSE}
+# write.table(tb.means.reg,file="./C4-tb-means-regression.txt",
+#                col.names=T,row.names=F)
+# write.table(tb.means.reg.norm,col.names=T,row.names=F,
+#                file="./C4-tb-means-regression-norm.txt")
+# write.table(tb.vars.reg,file="./C4-tb-vars-regression.txt",
+#                col.names=T,row.names=F)
+# write.table(tb.vars.reg.norm,col.names=T,row.names=F,
+#                file="./C4-tb-vars-regression-norm.txt")
+```
+These results are available in  "C4-tb-means-regression.txt", "C4-tb-means-regression-norm.txt", "C4-tb-vars-regression.txt" and "C4-tb-varss-regression-norm.txt".
+ 
+```{r,echo=FALSE}
+### HIDDEN
+tb.means.reg=read.table("./C4-tb-means-regression.txt",header=TRUE)
+tb.vars.reg=read.table("./C4-tb-vars-regression.txt",header=TRUE)
+tb.means.reg.norm=read.table("./C4-tb-means-regression-norm.txt",header=TRUE)
+tb.vars.reg.norm=read.table("./C4-tb-vars-regression-norm.txt",header=TRUE)
+```
+
+We have computed the regressions for the Colless-like index. These are the
+regressions of its mean values:
+```{r}
+reg.cl=summary(lm(log(tb.means.reg[,2])~log(tb.means.reg[,1])))
+reg.cl
+reg.cl.norm=summary(lm(log(tb.means.reg.norm[,2])~
+                         log(tb.means.reg.norm[,1])))
+reg.cl.norm
+``` 
+These are the regressions of the variances of the values of the Colless-like index:
+```{r}
+reg.cl.var=summary(lm(log(tb.vars.reg[,2])~log(tb.vars.reg[,1]))) 
+reg.cl.var
+reg.cl.var.norm=summary(lm(log(tb.vars.reg.norm[,2])~
+                             log(tb.vars.reg.norm[,1]))) 
+reg.cl.var.norm
+```
+
+The following code produces Fig. 4.17(a):
+```{r C4-reg-CL,eval=TRUE,out.width="90%",fig.align="center"}
+plot(tb.means.reg[,1],tb.means.reg[,2],type = "l",
+        xlab="Number of leaves",ylab="Colless-like index")
+lines(1:300,exp(reg.cl$coefficients[1,1])*(1:300)^
+        reg.cl$coefficients[2,1],col="red")
+```
+
+As to the Sackin index, these are the regressions of its mean values:
+```{r}
+reg.sa=summary(lm(log(tb.means.reg[,3])~log(tb.means.reg[,1])))
+reg.sa
+reg.sa.norm=summary(lm(log(tb.means.reg.norm[,3])~
+                         log(tb.means.reg.norm[,1])))
+reg.sa.norm
+``` 
+These are the regressions of the variances of the values of the Sackin index:
+```{r}
+reg.sa.var=summary(lm(log(tb.vars.reg[,3])~log(tb.vars.reg[,1]))) 
+reg.sa.var
+reg.sa.var.norm=summary(lm(log(tb.vars.reg.norm[,3])~
+                             log(tb.vars.reg.norm[,1]))) 
+reg.sa.var.norm
+```
+
+The following code produces Fig. 4.17(b):
+```{r C4-reg-S,eval=TRUE,out.width="90%",fig.align="center"}
+plot(tb.means.reg[,1],tb.means.reg[,3],type = "l",
+        xlab="Number of leaves",ylab="Sackin index")
+lines(1:300,exp(reg.sa$coefficients[1,1])*(1:300)^
+        reg.sa$coefficients[2,1],col="green") 
+```
+
+
+Finally, these are the regressions of the means values for the total cophenetic index:
+```{r}
+reg.co=summary(lm(log(tb.means.reg[,4])~log(tb.means.reg[,1])))
+reg.co
+reg.co.norm=summary(lm(log(tb.means.reg.norm[,4])~
+                         log(tb.means.reg.norm[,1])))
+reg.co.norm
+``` 
+These are the regressions of the variances of the values of the total cophenetic index:
+```{r}
+reg.co.var=summary(lm(log(tb.vars.reg[,4])~log(tb.vars.reg[,1]))) 
+reg.co.var
+reg.co.var.norm=summary(lm(log(tb.vars.reg.norm[,4])~
+                             log(tb.vars.reg.norm[,1]))) 
+reg.co.var.norm
+```
+And the code producing Fig. 4.17(c):
+```{r C4-reg-coph,eval=TRUE,out.width="90%",fig.align="center"}
+plot(tb.means.reg[,1],tb.means.reg[,4],type = "l",
+        xlab="Number of leaves",ylab="Cophenetic index")
+lines(1:300,exp(reg.co$coefficients[1,1])*(1:300)^
+        reg.co$coefficients[2,1],col="blue") 
+```
+
+
+## A.6.4 Computation of the number of ties {#ties2}
+
+In this section we compute the number of ties of the three balance indices
+under consideration. For every number of leaves $n$ and for every index, we have computed the numbers of pairs of trees with $n$ leaves in TreeBASE having the same value of the corresponding index:
+```{r}
+ties.cl=c()
+ties.sa=c()
+ties.co=c()
+for(i in 3:max(tb.n)){
+  aux=tb.idx[tb.n==i,]
+  ties.cl=rbind(ties.cl,c(i,sum(choose(table(aux[,1]),2))))
+  ties.sa=rbind(ties.sa,c(i,sum(choose(table(aux[,2]),2))))
+  ties.co=rbind(ties.co,c(i,sum(choose(table(aux[,3]),2))))
+}
+```
+
+The following commands produce Fig. 4.18: 
+```{r C4-ties,eval=TRUE,out.width="90%",fig.align="center"}
+plot(3:150,ties.cl[1:148,2],type="l",xlab="Number of leaves",
+        ylab="Number of ties",col="red",lwd=2)
+lines(3:150,ties.sa[1:148,2],col="green",lwd=1)
+lines(3:150,ties.co[1:148,2],col="blue",lwd=1,lty=1)
+legend("topright",legend=c("Colless-like index",
+          "Sackin index","Cophenetic index"),
+          lty=c("solid","solid","solid"),
+          col=c("red","green","blue"))
+```
+
+
+
+
+## A.6.4 Computation of Spearman's rank correlation {#cor2}
+The global Spearman's rank correlation coefficient 
+of $\mathfrak{C}$ and $S$ is   
+```{r}
+cor(tb.idx[,1],tb.idx[,2],method="spearman")
+```
+And the global Spearman's rank correlation coefficient 
+of of $\mathfrak{C}$ and $\Phi$ is
+```{r}
+cor(tb.idx[,1],tb.idx[,3],method="spearman")
+```
+
+
+We compute now the Spearman rank correlation coefficient of the indices
+on all trees in TreeBASE grouping them by their number of leaves $n$. As usual, we have considered only those numbers of leaves with more than 30 trees:
+```{r}
+spearman.sackin=c()
+for(i in 1:max(tb.n)){
+  aux=tb.idx[tb.n==i,] 
+  if(dim(aux)[1]>30){
+    aux2=rank(aux[,1])
+    aux3=rank(aux[,2])
+    spearman.sackin=rbind(spearman.sackin,
+          c(i,cor(aux2,aux3,method="spearman")))
+  } 
+} 
+colnames(spearman.sackin)=c("Num.Leaves","SpearmanRank")
+write.table(spearman.sackin,file="./C4-tb-spearman-CL-S.txt",
+              col.names=T,row.names=F)
+
+spearman.coph=c()
+for(i in 1:max(tb.n)){
+  aux=tb.idx[tb.n==i,] 
+  if(dim(aux)[1]>30){
+    aux2=rank(aux[,1])
+    aux3=rank(aux[,3])
+    spearman.coph=rbind(spearman.coph,
+          c(i,cor(aux2,aux3,method="spearman")))
+  } 
+}
+colnames(spearman.sackin)=c("Num.Leaves","SpearmanRank")
+write.table(spearman.coph,file="./C4-tb-spearman-CL-C.txt",
+              col.names=T,row.names=F)
+```
+All the values are available in the files ''C4-tb-spearman-CL-S.txt'' and   ''C4-tb-spearman-CL-C.txt''. 
+
+Fig. 4.19 is produced with the following commands:
+```{r C4-spearman,eval=TRUE,out.width="90%",fig.align="center"} 
+plot(spearman.sackin[,1],spearman.sackin[,2],type="l",
+      col="green",xlab="number of leaves",
+      ylab="Spearman's rank correlation coefficient")
+legend("bottomright",legend="C and S"
+         #"Colless-like and Sackin indices"
+         , lty= "solid"  ,col= "green" ) 
+summary(lm(spearman.sackin[,2]~spearman.sackin[,1]))
+plot(spearman.coph[,1],spearman.coph[,2],type="l",
+      col="blue",xlab="number of leaves",
+      ylab="Spearman's rank correlation coefficient")
+legend("bottomright",legend= bquote(paste("C and ",Phi," "))
+         #"Colless-like and Cophenetic indices" 
+         , lty= "solid" ,col=  "blue" ) 
+```
+
+We also can compute the regression of the results
+```{r} 
+summary(lm(spearman.sackin[,2]~spearman.sackin[,1]))
+summary(lm(spearman.coph[,2]~spearman.coph[,1]))
+```
+
+
+## A test on the distribution of TreeBASE {#fits}
+
+
+```{r,eval=TRUE,echo=FALSE}
+load("./treeBASE-database.RData",verbose = T)
+tb.idx=read.table("./C4-tb-indices.txt",header=T)
+tb.idx.norm=read.table("./C4-tb-indices-norm.txt",header=T) 
+tb.n=read.table("./C4-tb-n.txt") 
+################################################################
+database.location = "D:/Recerca/sep_2015/sep_2016/CollessLike/CollessLikeDataBase/" 
+#colless.tb = table.info$Colles.MDM.ln.norm # --> tb.idx.norm[,1]
+```
+
+In this case, we focus our study with the normalized Colless-like index of the TreeBASE, so we consider only the following array of its normalized indices
+```{r}
+tb.colless=tb.idx.norm[,1]
+```
+
+The following functions extract the data from our database and perform for every pair of \texttt{alpha} and \texttt{gamma} a \texttt{chisq.test}. Then, we will study in detail each interesting case.
+```{r }
+read.idx = function(n,alpha,gamma,norm=T){
+  file = paste("CollessLikeDataBase_n",n,"_a",alpha*100,"_g",
+               gamma*100,"_r5000.txt",sep="")
+  folder = paste(database.location,"n",n,"/",sep="")
+  if(file %in% dir(folder)) 
+    indices.list=read.table(file=paste(folder,file,sep=""),
+                              header=TRUE)
+  if(norm) indices.list = indices.list[,1]/(( log(0+exp(1)) +
+                            log(2+exp(1)) )*(n-1)*(n-2)/4)
+  else indices.list = indices.list[,1]
+  return(indices.list)
+} 
+
+pis.ag = function(alpha,gamma,intervals,dens=F){
+  all.trees.study = unlist(lapply(3:50,read.idx,alpha=alpha,
+                            gamma=gamma))
+  brs = seq(0,1,length.out = intervals+1)
+  fe = hist(all.trees.study,breaks = brs,plot=F)
+  pis = fe$counts/sum(fe$counts)
+  if(dens){
+    dens = density(all.trees.study) 
+    new.pi = c()
+    for(i in 1:intervals){
+      aux=integrate(splinefun(dens$x,dens$y), brs[i],
+                      brs[i+1])$value
+      new.pi= c(new.pi,aux)
+    }
+    new.pi=new.pi/sum(new.pi)
+    return(list(pis,new.pi,dens))
+  }
+  else return(pis)
+}
+
+parameters.study = function(fo, intervals,dens=F,info=FALSE){ 
+  ntb = sum(fo$counts)
+  parameters = expand.grid(seq(0,1,0.1),seq(0,1,0.1))
+  parameters = parameters[which(parameters[,1]>=parameters[,2]),]
+  pvalues=c()
+  all.info=list()
+  for(i in 1:65){
+    if(i!=11){ 
+      pis = pis.ag(parameters[i,1],parameters[i,2],intervals,
+                   dens = dens)
+      table.info=grouping(fo$counts,pis*ntb,fo$breaks)
+      out.test=chisq.test(table.info[,1],p=table.info[,2]/ntb)
+      pvalues=c(pvalues,out.test$p.value)
+      print(paste("a:",parameters[i,1],", g:",parameters[i,2],
+                    "-->",out.test$p.value))
+      if(info)print(out.test)
+      all.info[[i]]=list(table.info,out.test)
+    }
+    else{
+      print("a: 1 , g: 0  --> ERROR")
+      pvalues=c(pvalues,-1)
+    }
+  }
+  print("a: 1 , g: 1  --> ERROR")
+  parameters=cbind(parameters,c(pvalues,-1))
+  return(list(parameters,all.info))
+}
+
+grouping = function(xx,yy,breaks){
+  ois = xx[]
+  eis = yy[] 
+  to.modify = which(eis<5) 
+  while(length(to.modify)>0){
+    to.modify = to.modify[1]
+    N = length(eis)
+    if(to.modify>1){
+      if(to.modify<N){
+        aux1 = eis[to.modify-1]+eis[to.modify]
+        aux2 = eis[to.modify]+eis[to.modify+1]
+        if(aux1<aux2){
+          eis[to.modify-1] = aux1 
+          ois[to.modify-1] = ois[to.modify-1]+ois[to.modify] 
+          breaks = breaks[-to.modify]
+        }
+        else{
+          eis[to.modify+1] = aux2 
+          ois[to.modify+1] = ois[to.modify]+ois[to.modify+1] 
+          breaks = breaks[-(to.modify+1)]
+        }
+        eis = eis[-to.modify]
+        ois = ois[-to.modify]
+      }
+      else{ ## to.modify=N
+        eis[N-1] = eis[N]+eis[N-1]
+        eis = eis[-N]
+        ois[N-1] = ois[N]+ois[N-1]
+        ois = ois[-N]
+        breaks = breaks[-(N)]
+      }
+    }
+    else{ ## to.modify=1
+      eis[2] = eis[1]+eis[2]
+      eis = eis[-1]
+      ois[2] = ois[1]+ois[2]
+      ois = ois[-1]
+      breaks = breaks[-2]
+    }
+    to.modify=which(eis<5)
+  }
+  N=length(breaks)
+  return(cbind(ois,eis,linf=breaks[1:(N-1)],lsup=breaks[2:N]))
+}
+```
+
+The following code executes the study 
+```{r }
+intervals=100
+fo = hist(tb.colless,breaks = intervals,plot=F)
+ntb = sum(fo$counts)
+results.study=parameters.study(fo,intervals)
+```
+The following cases are those with p-value different of 0 
+```{r }
+results.study[[1]][which(results.study[[1]][,3]>0),]
+p42 = pis.ag(0.7,0.4,intervals)
+p49 = pis.ag(0.8,0.5,intervals)
+```
+Although the p-value is very small, we plot the results in Fig. 4.21 as follows:
+```{r C4-distribution-CL-TB }
+plot(-1,-1,xlim =c(0,1),ylim=c(0,0.04),xlab="Indices",ylab="",
+     pch=20,col="white",
+     main="Distribution of Colless-Like indices")
+lines(fo$mids,fo$counts/ntb,lwd=2)
+lines(fo$mids,p42,pch=20,col="blue",lwd=2)  
+legend(c(0.4,0.75),c(0.04,0.033),legend = c("TreeBase",
+        expression(paste(alpha," = 0.7, ",gamma,"= 0.4"))),
+        col=c("black","blue"),lwd=2 ,cex=0.75)
+```
+
+Besides the whole TreeBASE as explained above, we have also considered differents subsets of it
+```{r,eval=FALSE}
+tb.kind=function(tr)return(tr$kind)
+kind=unlist(lapply(tb.ape ,tb.kind))
+tb.type=function(tr)return(tr$type) 
+type=unlist(lapply(tb.ape ,tb.type))
+idx.spe=which(kind=="Species Tree")
+idx.gen=which(kind=="Gene Tree")
+idx.spe.con=intersect(idx.spe,which(type=="Consensus"))
+idx.spe.sin=intersect(idx.spe,which(type=="Single"))
+tb.spe=tb.colless[idx.spe]
+tb.spe.n = tb.n[idx.spe,]
+tb.spe.con=tb.colless[idx.spe.con]
+tb.spe.con.n = tb.n[idx.spe.con,]
+tb.spe.sin=tb.colless[idx.spe.sin]
+tb.spe.sin.n = tb.n[idx.spe.sin,]
+
+erase.attributes = function(tree){
+  tree$S.id = NULL
+  tree$Tr.id = NULL
+  tree$type = NULL
+  tree$kind = NULL
+  tree$quality = NULL
+  return(tree)
+}
+tb.ape.aux = lapply(tb.ape,erase.attributes) 
+repetitions = duplicated(tb.ape.aux)
+pos.repetitions = (1:length(repetitions))[repetitions]
+tb.ape.no.reps = tb.ape[!repetitions]
+
+tb.qua=function(tr)return(tr$quality)
+qua=unlist(lapply(tb.ape,tb.qua)) 
+idx.qua=which(qua=="Species Tree")
+tb.spe=tb.colless[setdiff(idx.spe,pos.repetitions)] 
+tb.spe.n = tb.n[setdiff(idx.spe,pos.repetitions), ]
+tb.spe.con=tb.colless[setdiff(idx.spe.con,pos.repetitions)] 
+tb.spe.con.n = tb.n[setdiff(idx.spe.con,pos.repetitions), ]
+tb.spe.sin=tb.colless[setdiff(idx.spe.sin,pos.repetitions)]
+tb.spe.sin.n = tb.n[setdiff(idx.spe.sin,pos.repetitions), ]
+```
+
+We have repeated the study explained above for these subsets of TreeBASE, comparing the distribution of the normalized Colless-like indices of their trees with the estimated theoretical distributions by means of goodness-of-fit tests, and the results have been the same, that is, all p-values have also turned out to be  negligible. 
+
+
